@@ -1,0 +1,55 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-video-call-backend
+  
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+# AI Processing Configuration
+ai:
+  processing:
+    deep-live-cam:
+      path: "../../Deep_Live_Project/Deep-Live-Cam"
+    rvc:
+      path: "../../RVC-WebUI"
+    target-face-path: "./faces"
+    voice-model-path: "./models/voices"
+    frame-width: 640
+    frame-height: 480
+    target-fps: 20
+    max-concurrent-sessions: 10
+    frame-queue-size: 5
+    audio-chunk-size: 4096
+    
+  gpu:
+    enabled: true
+    device-id: 0
+
+# WebSocket Configuration
+websocket:
+  allowed-origins: "*"
+  max-message-size: 10MB
+  ping-interval: 25000
+  ping-timeout: 20000
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.aivideocall: DEBUG
+    org.springframework.web.socket: DEBUG
+
+# Management Endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

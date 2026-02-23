@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Test</title>
+</head>
+<body>
+    <h2>Firefox Camera Test</h2>
+    <video id="video" autoplay playsinline style="width: 100%; max-width: 640px; border: 1px solid black;"></video>
+    <div id="status"></div>
+    <button onclick="startCamera()">Start Camera</button>
+    <button onclick="stopCamera()">Stop Camera</button>
+
+    <script>
+        let stream = null;
+        const video = document.getElementById('video');
+        const status = document.getElementById('status');
+
+        async function startCamera() {
+            try {
+                status.innerHTML = 'Requesting camera access...';
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                
+                video.srcObject = stream;
+                status.innerHTML = '✅ Camera working! Video should appear above.';
+                
+                console.log('Camera tracks:', stream.getVideoTracks());
+                console.log('Audio tracks:', stream.getAudioTracks());
+                
+            } catch (error) {
+                status.innerHTML = '❌ Error: ' + error.message;
+                console.error('Camera error:', error);
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                status.innerHTML = 'Camera stopped';
+            }
+        }
+
+        // Auto-start
+        startCamera();
+    </script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "name": "webrtc-client",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.2.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.6.1",
+    "simple-peer": "^9.11.1",
+    "socket.io-client": "^4.5.4"
+  },
+  "scripts": {
+    "start": "set \"HTTPS=true\" && set \"HOST=0.0.0.0\" && set \"SSL_CRT_FILE=../172.16.0.125+2.pem\" && set \"SSL_KEY_FILE=../172.16.0.125+2-key.pem\" && react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "react-scripts": "^5.0.1"
+  }
+}
