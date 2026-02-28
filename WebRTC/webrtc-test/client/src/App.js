@@ -3,8 +3,9 @@ import VideoCall from './components/VideoCall';
 import Room from './components/Room';
 import axios from 'axios';
 
-// Use your IP address here
-const SERVER_URL = 'https://172.16.0.125:3001';
+// Auto-detect server URL based on current location
+// This will work for both localhost and ngrok URLs
+const SERVER_URL = window.location.origin;
 
 function App() {
   const [roomId, setRoomId] = useState(null);

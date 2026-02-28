@@ -88,7 +88,7 @@ const server = https.createServer(options, app);
 // Socket.io with HTTPS support
 const io = new Server(server, {
   cors: {
-    origin: ["https://172.16.0.125:3000", "https://localhost:3000", "http://localhost:3000"],
+    origin: "*", // Allow all origins for ngrok testing
     methods: ["GET", "POST"],
     credentials: true
   },
