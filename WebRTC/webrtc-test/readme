@@ -1,0 +1,156 @@
+# 🎭 Real-Time AI Video Call with Face Swap
+## WebRTC + Deep-Live-Cam Integration
+
+---
+
+## 📁 File Structure
+
+```
+webrtc-test/
+├── client/                     ← React frontend
+│   └── src/
+│       ├── VideoCall.js        ← ✅ UPDATED — now includes face swap
+│       └── Room.js             ← ✅ unchanged
+├── serve.js                    ← ✅ Node.js signaling server (port 3001)
+├── server.py                   ← ✅ NEW — Python AI face-swap server (port 8000)
+├── models/
+│   └── inswapper_128.onnx      ← ⬇️ Download separately (see below)
+└── README.md
+```
+
+---
+
+## 🚀 How to Run (3 Steps)
+
+### Step 1 — Start the Node.js Signaling Server
+```bash
+cd webrtc-test
+node serve.js
+# Runs on http://localhost:3001
+```
+
+### Step 2 — Start the Python AI Server
+```bash
+# First time only — install dependencies:
+pip install fastapi uvicorn websockets opencv-python numpy pillow python-multipart insightface onnxruntime
+
+# Then run:
+python server.py
+# Runs on http://localhost:8000
+```
+
+### Step 3 — Start the React Frontend
+```bash
+cd webrtc-test/client
+npm install
+npm start
+# Runs on http://localhost:3000
+```
+
+---
+
+## ⬇️ Download the Face Swap Model
+
+Create a `models/` folder and download the model:
+
+```bash
+mkdir models
+# Download inswapper_128.onnx (~500MB) from:
+# https://github.com/facefusion/facefusion-assets/releases/download/models/inswapper_128.onnx
+
+# Place it at:
+# webrtc-test/models/inswapper_128.onnx
+```
+
+> **Note:** Without the model, the server runs in **passthrough mode** — video still works, just no face swap.
+
+---
+
+## 🎯 How to Use Face Swap in a Call
+
+1. **Start a room** — Click "Create New Room" in the UI
+2. **Open a second tab** — Paste the Room ID and join
+3. **Upload your source face** — Click "Upload Source Face" and pick a photo
+4. **Start face swap** — Click "▶ Start Face Swap"
+5. The other person in the call will now see your face replaced!
+
+---
+
+## 🏗️ Architecture
+
+```
+User Camera/Mic
+      │
+      ▼
+[React Frontend]  ──frames──►  [Python AI Server :8000]
+      │                              │ InsightFace
+      │            ◄──processed──────┘
+      │
+      ▼ (processed stream)
+[Socket.io Signaling :3001]
+      │
+      ▼
+[WebRTC Peer Connection]
+      │
+      ▼
+Remote User sees swapped face
+```
+
+---
+
+## 🔧 Environment Variables (optional)
+
+Create `client/.env`:
+```
+REACT_APP_AI_SERVER_URL=ws://localhost:8000
+REACT_APP_AI_HTTP_URL=http://localhost:8000
+```
+
+For remote deployment (e.g. ngrok):
+```
+REACT_APP_AI_SERVER_URL=wss://your-ai-server.ngrok.io
+REACT_APP_AI_HTTP_URL=https://your-ai-server.ngrok.io
+```
+
+---
+
+## ⚡ Performance Tips
+
+| Setting | Value | Notes |
+|--------|-------|-------|
+| Frame rate | 20fps | Set `FRAME_INTERVAL_MS = 50` in VideoCall.js |
+| Resolution | 480x270 | Lower = faster AI processing |
+| GPU | NVIDIA recommended | InsightFace uses CUDA if available |
+| Latency target | < 200ms | Achievable on local network |
+
+---
+
+## 🐛 Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| "AI Offline" in UI | Make sure `python server.py` is running |
+| No face swap effect | Upload a source face image first |
+| Model not found | Download `inswapper_128.onnx` to `models/` |
+| Camera not working | Allow camera permissions in browser |
+| CUDA error | Install `onnxruntime-gpu` instead of `onnxruntime` |
+| Peers can't connect | Check firewall allows port 3001 |
+
+---
+
+## 📦 Full Dependency List
+
+**Node.js (serve.js):**
+```bash
+npm install express socket.io uuid
+```
+
+**Python (server.py):**
+```bash
+pip install fastapi uvicorn websockets opencv-python numpy pillow python-multipart insightface onnxruntime
+```
+
+**React (client/):**
+```bash
+npm install socket.io-client simple-peer
+```
