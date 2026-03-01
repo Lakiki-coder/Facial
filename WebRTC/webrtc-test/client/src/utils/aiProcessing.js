@@ -1,6 +1,9 @@
 /**
- * AI Processing Utility
- * Handles WebSocket communication with the AI backend for face swap and voice conversion
+ * aiProcessing.js — AI Processing WebSocket Client
+ *
+ * Singleton client for communicating with the Spring Boot AI backend.
+ * Handles WebSocket connection lifecycle, frame/audio sending,
+ * REST API calls for model management, and event dispatching.
  */
 
 class AIProcessingClient {
@@ -13,26 +16,23 @@ class AIProcessingClient {
     this.serverUrl = '';
   }
 
-  /**
-   * Connect to AI processing WebSocket server
-   * @param {string} serverUrl - The AI backend WebSocket URL
-   */
+  // ── Connection ──────────────────────────────────────────────────────────────
+
   connect(serverUrl) {
     this.serverUrl = serverUrl;
-    
+
     return new Promise((resolve, reject) => {
       try {
-        // Close existing connection if any
-        if (this.socket) {
-          this.socket.close();
-        }
+        if (this.socket) this.socket.close();
 
-        console.log(`[AI] Connecting to ${serverUrl}/ws/ai-process`);
-        
-        this.socket = new WebSocket(`${serverUrl}/ws/ai-process`);
+        // Convert http(s) to ws(s) for WebSocket URL
+        const wsUrl = serverUrl.replace(/^http/, 'ws');
+        console.log('[AI] Connecting to ' + wsUrl + '/ws/ai-process');
+
+        this.socket = new WebSocket(wsUrl + '/ws/ai-process');
 
         this.socket.onopen = () => {
-          console.log('[AI] ✅ Connected to AI Processing server');
+          console.log('[AI] Connected');
           this.isConnected = true;
           this.reconnectAttempts = 0;
           this.emit('connected', {});
@@ -42,257 +42,35 @@ class AIProcessingClient {
         this.socket.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
-            this.handleMessage(message);
+            this._handleMessage(message);
           } catch (e) {
-            console.error('[AI] Error parsing message:', e);
+            console.error('[AI] Parse error:', e);
           }
         };
 
         this.socket.onerror = (error) => {
-          console.error('[AI] ❌ WebSocket error:', error);
+          console.error('[AI] WS error:', error);
           this.emit('error', error);
           reject(error);
         };
 
         this.socket.onclose = (event) => {
-          console.log('[AI] 🔌 Connection closed:', event.code, event.reason);
+          console.log('[AI] Closed:', event.code, event.reason);
           this.isConnected = false;
           this.emit('disconnected', { code: event.code, reason: event.reason });
-          
-          // Attempt reconnection if not intentionally closed
+
           if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
-            console.log(`[AI] Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
             setTimeout(() => this.connect(serverUrl), 2000 * this.reconnectAttempts);
           }
         };
-
       } catch (error) {
-        console.error('[AI] Failed to connect:', error);
+        console.error('[AI] Connection failed:', error);
         reject(error);
       }
     });
   }
 
-  /**
-   * Handle incoming WebSocket messages
-   */
-  handleMessage(message) {
-    console.log('[AI] Received:', message.type);
-    
-    switch (message.type) {
-      case 'connected':
-        this.emit('connected', message);
-        break;
-        
-      case 'processed_frame':
-        this.emit('frameProcessed', message);
-        break;
-        
-      case 'processed_audio':
-        this.emit('audioProcessed', message);
-        break;
-        
-      case 'config_status':
-        this.emit('configStatus', message);
-        break;
-        
-      case 'pong':
-        this.emit('pong', message);
-        break;
-        
-      case 'error':
-        this.emit('error', message);
-        break;
-        
-      default:
-        console.log('[AI] Unknown message type:', message.type);
-    }
-  }
-
-  /**
-   * Send a video frame for AI processing
-   * @param {string} frameData - Base64 encoded frame data
-   * @param {number} timestamp - Frame timestamp
-   */
-  sendFrame(frameData, timestamp = Date.now()) {
-    if (!this.isConnected || !this.socket) {
-      console.warn('[AI] Not connected, cannot send frame');
-      return;
-    }
-
-    const message = {
-      type: 'frame',
-      data: frameData,
-      timestamp: timestamp
-    };
-
-    this.socket.send(JSON.stringify(message));
-  }
-
-  /**
-   * Send audio data for AI processing
-   * @param {string} audioData - Base64 encoded audio data
-   * @param {number} timestamp - Audio timestamp
-   */
-  sendAudio(audioData, timestamp = Date.now()) {
-    if (!this.isConnected || !this.socket) {
-      console.warn('[AI] Not connected, cannot send audio');
-      return;
-    }
-
-    const message = {
-      type: 'audio',
-      data: audioData,
-      timestamp: timestamp
-    };
-
-    this.socket.send(JSON.stringify(message));
-  }
-
-  /**
-   * Configure AI processing settings
-   * @param {boolean} faceSwapEnabled - Enable/disable face swap
-   * @param {boolean} voiceConvertEnabled - Enable/disable voice conversion
-   */
-  configure(faceSwapEnabled, voiceConvertEnabled) {
-    if (!this.isConnected || !this.socket) {
-      console.warn('[AI] Not connected, cannot configure');
-      return;
-    }
-
-    const message = {
-      type: 'config',
-      faceSwap: faceSwapEnabled,
-      voiceConvert: voiceConvertEnabled
-    };
-
-    this.socket.send(JSON.stringify(message));
-    console.log('[AI] Sent config:', message);
-  }
-
-  /**
-   * Send ping to keep connection alive
-   */
-  ping() {
-    if (!this.isConnected || !this.socket) return;
-
-    this.socket.send(JSON.stringify({ type: 'ping' }));
-  }
-
-  /**
-   * Load a face for face swapping
-   * @param {string} imageData - Base64 encoded face image
-   * @param {string} faceName - Name for the face
-   */
-  async loadFace(imageData, faceName) {
-    const response = await fetch(`${this.serverUrl}/api/ai/face-swap/load`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageData, faceName })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to load face');
-    }
-    
-    return response.json();
-  }
-
-  /**
-   * Load a voice model for voice conversion
-   * @param {string} modelPath - Path to the voice model
-   * @param {string} voiceName - Name for the voice
-   */
-  async loadVoice(modelPath, voiceName) {
-    const response = await fetch(`${this.serverUrl}/api/ai/voice-convert/load`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ modelPath, voiceName })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to load voice');
-    }
-    
-    return response.json();
-  }
-
-  /**
-   * Enable or disable face swap
-   */
-  async setFaceSwapEnabled(enabled) {
-    const response = await fetch(`${this.serverUrl}/api/ai/face-swap/enable`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled })
-    });
-    
-    return response.json();
-  }
-
-  /**
-   * Enable or disable voice conversion
-   */
-  async setVoiceConvertEnabled(enabled) {
-    const response = await fetch(`${this.serverUrl}/api/ai/voice-convert/enable`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled })
-    });
-    
-    return response.json();
-  }
-
-  /**
-   * Get AI service status
-   */
-  async getStatus() {
-    const response = await fetch(`${this.serverUrl}/api/ai/health`);
-    return response.json();
-  }
-
-  /**
-   * Add event listener
-   */
-  on(event, callback) {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, []);
-    }
-    this.listeners.get(event).push(callback);
-  }
-
-  /**
-   * Remove event listener
-   */
-  off(event, callback) {
-    if (!this.listeners.has(event)) return;
-    
-    const callbacks = this.listeners.get(event);
-    const index = callbacks.indexOf(callback);
-    if (index > -1) {
-      callbacks.splice(index, 1);
-    }
-  }
-
-  /**
-   * Emit event to listeners
-   */
-  emit(event, data) {
-    if (!this.listeners.has(event)) return;
-    
-    this.listeners.get(event).forEach(callback => {
-      try {
-        callback(data);
-      } catch (e) {
-        console.error(`[AI] Error in ${event} listener:`, e);
-      }
-    });
-  }
-
-  /**
-   * Disconnect from AI server
-   */
   disconnect() {
     if (this.socket) {
       this.socket.close(1000, 'Client disconnecting');
@@ -300,8 +78,133 @@ class AIProcessingClient {
       this.isConnected = false;
     }
   }
+
+  // ── Message Handling ────────────────────────────────────────────────────────
+
+  _handleMessage(message) {
+    switch (message.type) {
+      case 'connected':
+        this.emit('connected', message);
+        break;
+      case 'processed_frame':
+        this.emit('frameProcessed', message);
+        break;
+      case 'processed_audio':
+        this.emit('audioProcessed', message);
+        break;
+      case 'config_status':
+        this.emit('configStatus', message);
+        break;
+      case 'pong':
+        this.emit('pong', message);
+        break;
+      case 'error':
+        this.emit('error', message);
+        break;
+      default:
+        console.log('[AI] Unknown message type:', message.type);
+        break;
+    }
+  }
+
+  // ── Send Methods ────────────────────────────────────────────────────────────
+
+  sendFrame(frameData, timestamp) {
+    if (!this.isConnected) return;
+    if (!timestamp) timestamp = Date.now();
+    this.socket.send(JSON.stringify({ type: 'frame', data: frameData, timestamp: timestamp }));
+  }
+
+  sendAudio(audioData, timestamp) {
+    if (!this.isConnected) return;
+    if (!timestamp) timestamp = Date.now();
+    this.socket.send(JSON.stringify({ type: 'audio', data: audioData, timestamp: timestamp }));
+  }
+
+  configure(faceSwapEnabled, voiceConvertEnabled) {
+    if (!this.isConnected) return;
+    const msg = { type: 'config', faceSwap: faceSwapEnabled, voiceConvert: voiceConvertEnabled };
+    this.socket.send(JSON.stringify(msg));
+    console.log('[AI] Config sent:', msg);
+  }
+
+  ping() {
+    if (this.isConnected) {
+      this.socket.send(JSON.stringify({ type: 'ping' }));
+    }
+  }
+
+  // ── REST API Methods ────────────────────────────────────────────────────────
+
+  async loadFace(imageData, faceName) {
+    const res = await fetch(this.serverUrl + '/api/ai/face-swap/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageData: imageData, faceName: faceName }),
+    });
+    if (!res.ok) throw new Error('Failed to load face');
+    return res.json();
+  }
+
+  async loadVoice(modelPath, voiceName) {
+    const res = await fetch(this.serverUrl + '/api/ai/voice-convert/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modelPath: modelPath, voiceName: voiceName }),
+    });
+    if (!res.ok) throw new Error('Failed to load voice');
+    return res.json();
+  }
+
+  async setFaceSwapEnabled(enabled) {
+    const res = await fetch(this.serverUrl + '/api/ai/face-swap/enable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled }),
+    });
+    return res.json();
+  }
+
+  async setVoiceConvertEnabled(enabled) {
+    const res = await fetch(this.serverUrl + '/api/ai/voice-convert/enable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled }),
+    });
+    return res.json();
+  }
+
+  async getStatus() {
+    const res = await fetch(this.serverUrl + '/api/ai/health');
+    return res.json();
+  }
+
+  // ── Event System ────────────────────────────────────────────────────────────
+
+  on(event, callback) {
+    if (!this.listeners.has(event)) this.listeners.set(event, []);
+    this.listeners.get(event).push(callback);
+  }
+
+  off(event, callback) {
+    const cbs = this.listeners.get(event);
+    if (!cbs) return;
+    const i = cbs.indexOf(callback);
+    if (i > -1) cbs.splice(i, 1);
+  }
+
+  emit(event, data) {
+    const cbs = this.listeners.get(event);
+    if (!cbs) return;
+    cbs.forEach((cb) => {
+      try {
+        cb(data);
+      } catch (e) {
+        console.error('[AI] Listener error (' + event + '):', e);
+      }
+    });
+  }
 }
 
-// Export singleton instance
 export const aiClient = new AIProcessingClient();
 export default aiClient;

@@ -1,244 +1,261 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { aiClient } from '../utils/aiProcessing';
 
-/**
- * AI Control Panel Component
- * Allows users to control face swap and voice conversion settings
- */
+const Toggle = ({ on, onClick, disabled }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`toggle-track ${on ? 'on' : 'off'} ${disabled ? 'disabled' : ''}`}
+    style={{ border: 'none', padding: 0 }}
+    aria-label="Toggle"
+  >
+    <span className="toggle-thumb" />
+  </button>
+);
+
+const Stat = ({ label, value, unit = '' }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+    <span style={{ color: 'var(--text-3)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>{label}</span>
+    <span style={{ color: 'var(--accent)', fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+      {value}{unit}
+    </span>
+  </div>
+);
+
 const AIControlPanel = ({ serverUrl, onClose }) => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [faceSwapEnabled, setFaceSwapEnabled] = useState(false);
+  const [isConnected, setIsConnected]           = useState(false);
+  const [faceSwapEnabled, setFaceSwapEnabled]   = useState(false);
   const [voiceConvertEnabled, setVoiceConvertEnabled] = useState(false);
-  const [selectedFace, setSelectedFace] = useState(null);
-  const [status, setStatus] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [latency, setLatency] = useState(0);
-  const [fps, setFps] = useState(0);
-  
-  const fileInputRef = useRef(null);
+  const [selectedFace, setSelectedFace]         = useState(null);
+  const [status, setStatus]                     = useState(null);
+  const [isLoading, setIsLoading]               = useState(false);
+  const [latency, setLatency]                   = useState(0);
+  const [fps, setFps]                           = useState(0);
+
+  const fileInputRef   = useRef(null);
   const pingIntervalRef = useRef(null);
 
-  // Connect to AI server on mount
   useEffect(() => {
     connectToAI();
-    
-    // Set up event listeners
-    aiClient.on('connected', () => setIsConnected(true));
-    aiClient.on('disconnected', () => setIsConnected(false));
+
+    aiClient.on('connected',     () => setIsConnected(true));
+    aiClient.on('disconnected',  () => setIsConnected(false));
     aiClient.on('frameProcessed', (msg) => {
       setLatency(msg.latency || 0);
       setFps(msg.fps || 0);
     });
-    aiClient.on('error', (msg) => {
-      console.error('AI Error:', msg);
-    });
 
-    // Ping to keep connection alive
-    pingIntervalRef.current = setInterval(() => {
-      aiClient.ping();
-    }, 10000);
-
-    // Fetch initial status
+    pingIntervalRef.current = setInterval(() => aiClient.ping(), 10_000);
     fetchStatus();
 
-    return () => {
-      if (pingIntervalRef.current) {
-        clearInterval(pingIntervalRef.current);
-      }
-    };
+    return () => { clearInterval(pingIntervalRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const connectToAI = async () => {
     try {
-      await aiClient.connect(serverUrl.replace('3001', '8080'));
-      console.log('Connected to AI server');
-    } catch (error) {
-      console.error('Failed to connect to AI server:', error);
+      // Build AI backend URL using same hostname, port 8080 (Spring Boot)
+      const proto = window.location.protocol;
+      const host  = window.location.hostname;
+      const aiUrl = proto + '//' + host + ':8080';
+      await aiClient.connect(aiUrl);
+    } catch (e) {
+      console.warn('[AIPanel] Could not connect to AI server:', e);
     }
   };
 
   const fetchStatus = async () => {
-    try {
-      const statusData = await aiClient.getStatus();
-      setStatus(statusData);
-    } catch (error) {
-      console.error('Failed to fetch AI status:', error);
-    }
+    try { setStatus(await aiClient.getStatus()); } catch (_) {}
   };
 
   const handleFaceSwapToggle = async () => {
+    if (isLoading || !selectedFace) return;
+    const next = !faceSwapEnabled;
+    setIsLoading(true);
     try {
-      const newValue = !faceSwapEnabled;
-      setIsLoading(true);
-      
-      await aiClient.setFaceSwapEnabled(newValue);
-      setFaceSwapEnabled(newValue);
-      
-      // Also update WebSocket config
-      aiClient.configure(newValue, voiceConvertEnabled);
-      
-      setIsLoading(false);
-    } catch (error) {
-      console.error('Failed to toggle face swap:', error);
-      setIsLoading(false);
-    }
+      await aiClient.setFaceSwapEnabled(next);
+      setFaceSwapEnabled(next);
+      aiClient.configure(next, voiceConvertEnabled);
+    } catch (e) { console.error(e); }
+    setIsLoading(false);
   };
 
   const handleVoiceConvertToggle = async () => {
+    if (isLoading) return;
+    const next = !voiceConvertEnabled;
+    setIsLoading(true);
     try {
-      const newValue = !voiceConvertEnabled;
-      setIsLoading(true);
-      
-      await aiClient.setVoiceConvertEnabled(newValue);
-      setVoiceConvertEnabled(newValue);
-      
-      // Also update WebSocket config
-      aiClient.configure(faceSwapEnabled, newValue);
-      
-      setIsLoading(false);
-    } catch (error) {
-      console.error('Failed to toggle voice conversion:', error);
-      setIsLoading(false);
-    }
+      await aiClient.setVoiceConvertEnabled(next);
+      setVoiceConvertEnabled(next);
+      aiClient.configure(faceSwapEnabled, next);
+    } catch (e) { console.error(e); }
+    setIsLoading(false);
   };
 
-  const handleFaceImageSelect = async (event) => {
+  const handleFaceImageSelect = (event) => {
     const file = event.target.files[0];
     if (!file) return;
-
-    try {
-      setIsLoading(true);
-      
-      // Convert image to base64
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const imageData = e.target.result.split(',')[1]; // Remove data URL prefix
-        
+    setIsLoading(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const imageData = e.target.result.split(',')[1];
         await aiClient.loadFace(imageData, file.name);
         setSelectedFace(file.name);
         setFaceSwapEnabled(true);
-        
-        // Configure AI
         aiClient.configure(true, voiceConvertEnabled);
-        
-        setIsLoading(false);
-      };
-      reader.readAsDataURL(file);
-      
-    } catch (error) {
-      console.error('Failed to load face:', error);
+      } catch (err) { console.error('[AIPanel] Face load error:', err); }
       setIsLoading(false);
-    }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const S = {
+    panel: {
+      width: 300,
+      background: 'var(--bg-card)',
+      border: '1px solid var(--border)',
+      borderRadius: 14,
+      overflow: 'hidden',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+      animation: 'slide-up 0.3s ease forwards',
+    },
+    topBar: {
+      height: 3,
+      background: 'linear-gradient(90deg, var(--accent-2), var(--accent))',
+    },
+    body: { padding: '18px' },
+    section: {
+      background: 'var(--bg-raised)',
+      border: '1px solid var(--border)',
+      borderRadius: 10,
+      padding: '14px',
+      marginBottom: 10,
+    },
+    label: {
+      color: 'var(--text-1)', fontSize: 13, fontWeight: 600,
+      display: 'flex', alignItems: 'center', gap: 6,
+    },
+    subLabel: {
+      color: 'var(--text-3)', fontSize: 11,
+      fontFamily: 'var(--font-mono)', marginTop: 2,
+    },
+    uploadBtn: {
+      width: '100%', marginTop: 10, padding: '8px 12px',
+      background: 'rgba(139,92,246,0.12)',
+      border: '1px solid rgba(139,92,246,0.3)',
+      borderRadius: 8, color: '#c4b5fd',
+      fontSize: 12, fontFamily: 'var(--font-mono)',
+      cursor: 'pointer', transition: 'all 0.2s',
+    },
+    refreshBtn: {
+      width: '100%', marginTop: 12, padding: '9px',
+      background: 'var(--bg-raised)', border: '1px solid var(--border)',
+      borderRadius: 8, color: 'var(--text-2)', fontSize: 12,
+      fontFamily: 'var(--font-mono)', cursor: 'pointer',
+      transition: 'all 0.2s',
+    },
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4 w-80">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-gray-800">AI Controls</h3>
-        <button 
-          onClick={onClose}
-          className="text-gray-500 hover:text-gray-700"
-        >
-          ✕
-        </button>
-      </div>
+    <div style={S.panel}>
+      <div style={S.topBar} />
+      <div style={S.body}>
 
-      {/* Connection Status */}
-      <div className="mb-4 flex items-center">
-        <span className={`w-3 h-3 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-        <span className="text-sm text-gray-600">
-          {isConnected ? 'AI Server Connected' : 'AI Server Disconnected'}
-        </span>
-      </div>
-
-      {/* Face Swap Controls */}
-      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-        <div className="flex items-center justify-between mb-2">
-          <span className="font-medium text-gray-700">Face Swap</span>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-1)', letterSpacing: '0.04em' }}>
+              AI CONTROLS
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: '50%',
+                background: isConnected ? 'var(--success)' : 'var(--danger)',
+                display: 'inline-block',
+                ...(isConnected ? { animation: 'pulse-dot 1.8s ease-in-out infinite' } : {}),
+              }} />
+              <span style={{ color: 'var(--text-3)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                {isConnected ? 'AI Backend Online' : 'AI Backend Offline'}
+              </span>
+            </div>
+          </div>
           <button
-            onClick={handleFaceSwapToggle}
-            disabled={isLoading || !selectedFace}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              faceSwapEnabled ? 'bg-blue-600' : 'bg-gray-300'
-            } ${(!selectedFace || isLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                faceSwapEnabled ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
+            onClick={onClose}
+            style={{
+              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              borderRadius: 6, padding: '4px 10px', color: 'var(--text-3)',
+              cursor: 'pointer', fontSize: 14, transition: 'color 0.2s',
+            }}
+            onMouseEnter={e => e.target.style.color = 'var(--text-1)'}
+            onMouseLeave={e => e.target.style.color = 'var(--text-3)'}
+          >✕</button>
         </div>
-        
-        {/* Face Image Upload */}
-        <div className="mt-2">
+
+        {/* Face Swap */}
+        <div style={S.section}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={S.label}>🎭 Face Swap</div>
+              <div style={S.subLabel}>Deep-Live-Cam</div>
+            </div>
+            <Toggle on={faceSwapEnabled} onClick={handleFaceSwapToggle} disabled={isLoading || !selectedFace} />
+          </div>
+
           <input
-            type="file"
-            ref={fileInputRef}
+            type="file" ref={fileInputRef}
             onChange={handleFaceImageSelect}
-            accept="image/*"
-            className="hidden"
+            accept="image/*" style={{ display: 'none' }}
           />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
-            className="w-full px-3 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            style={S.uploadBtn}
+            onMouseEnter={e => e.target.style.background = 'rgba(139,92,246,0.2)'}
+            onMouseLeave={e => e.target.style.background = 'rgba(139,92,246,0.12)'}
           >
-            {selectedFace ? `Selected: ${selectedFace}` : 'Select Target Face'}
+            {selectedFace
+              ? `✓ ${selectedFace.length > 20 ? selectedFace.slice(0,20)+'…' : selectedFace}`
+              : '↑ Upload source face'}
           </button>
         </div>
-        
-        {selectedFace && (
-          <div className="mt-2 text-xs text-green-600">
-            ✓ Face loaded: {selectedFace}
+
+        {/* Voice Conversion */}
+        <div style={S.section}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={S.label}>🎙 Voice Convert</div>
+              <div style={S.subLabel}>RVC Model</div>
+            </div>
+            <Toggle on={voiceConvertEnabled} onClick={handleVoiceConvertToggle} disabled={isLoading} />
           </div>
-        )}
-      </div>
+          {voiceConvertEnabled && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+              Requires RVC server on :8000
+            </div>
+          )}
+        </div>
 
-      {/* Voice Conversion Controls */}
-      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-        <div className="flex items-center justify-between">
-          <span className="font-medium text-gray-700">Voice Conversion</span>
-          <button
-            onClick={handleVoiceConvertToggle}
-            disabled={isLoading}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              voiceConvertEnabled ? 'bg-blue-600' : 'bg-gray-300'
-            } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                voiceConvertEnabled ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
+        {/* Performance stats */}
+        <div style={{ ...S.section, background: 'rgba(0,0,0,0.4)' }}>
+          <p style={{ margin: '0 0 8px', color: 'var(--text-3)', fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Performance
+          </p>
+          <Stat label="Latency" value={latency} unit="ms" />
+          <Stat label="FPS" value={fps.toFixed(1)} />
+          <Stat label="Status" value={status?.status || '—'} />
         </div>
-      </div>
 
-      {/* Performance Stats */}
-      <div className="p-3 bg-gray-800 text-green-400 rounded-lg font-mono text-xs">
-        <div className="flex justify-between">
-          <span>Latency:</span>
-          <span>{latency}ms</span>
-        </div>
-        <div className="flex justify-between">
-          <span>FPS:</span>
-          <span>{fps.toFixed(1)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Status:</span>
-          <span>{status?.status || 'N/A'}</span>
-        </div>
+        {/* Refresh */}
+        <button
+          onClick={fetchStatus}
+          style={S.refreshBtn}
+          onMouseEnter={e => e.target.style.color = 'var(--text-1)'}
+          onMouseLeave={e => e.target.style.color = 'var(--text-2)'}
+        >
+          ↻ Refresh Status
+        </button>
       </div>
-
-      {/* Refresh Status Button */}
-      <button
-        onClick={fetchStatus}
-        className="w-full mt-4 px-3 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-      >
-        Refresh Status
-      </button>
     </div>
   );
 };

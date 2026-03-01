@@ -37,9 +37,23 @@ app = FastAPI(title="Deep-Live-Cam WebRTC Bridge")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_origin_regex=r"https://.*\.ngrok-free\.app|https://.*\.ngrok\.io|http://localhost:.*",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Bypass ngrok browser interstitial for all API requests
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class NgrokBypassMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["ngrok-skip-browser-warning"] = "true"
+        return response
+
+app.add_middleware(NgrokBypassMiddleware)
 
 # ─── Global State ────────────────────────────────────────────────────────────
 source_face_image: Optional[np.ndarray] = None   # The "source" face image
